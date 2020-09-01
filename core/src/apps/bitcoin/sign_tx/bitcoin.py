@@ -360,7 +360,8 @@ class Bitcoin:
 
                     if txi.script_type == InputScriptType.SPENDMULTISIG:
                         script_pubkey = scripts.output_script_multisig(
-                            multisig.multisig_get_pubkeys(txi.multisig), txi.multisig.m,
+                            multisig.multisig_get_pubkeys(txi.multisig),
+                            txi.multisig.m,
                         )
                     elif txi.script_type == InputScriptType.SPENDADDRESS:
                         script_pubkey = scripts.output_script_p2pkh(

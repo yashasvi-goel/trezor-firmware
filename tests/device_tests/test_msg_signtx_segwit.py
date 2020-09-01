@@ -399,7 +399,11 @@ class TestMsgSigntxSegwit:
             # "Fee over threshold" warning is displayed - fee is the whole TRUE_AMOUNT
             client.set_expected_responses(expected_responses)
             btc.sign_tx(
-                client, "Testnet", [inp1, inp2], [out1], prev_txes=TX_API,
+                client,
+                "Testnet",
+                [inp1, inp2],
+                [out1],
+                prev_txes=TX_API,
             )
 
         # In Phase 1 make the user confirm a lower value of the segwit input.
@@ -414,7 +418,11 @@ class TestMsgSigntxSegwit:
         with pytest.raises(TrezorFailure) as e, client:
             client.set_expected_responses(expected_responses)
             btc.sign_tx(
-                client, "Testnet", [inp1, inp2], [out1], prev_txes=TX_API,
+                client,
+                "Testnet",
+                [inp1, inp2],
+                [out1],
+                prev_txes=TX_API,
             )
 
         assert e.value.failure.message.endswith("Invalid amount specified")

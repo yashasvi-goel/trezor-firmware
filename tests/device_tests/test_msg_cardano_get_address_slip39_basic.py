@@ -74,7 +74,8 @@ def test_cardano_get_address(client, path, protocol_magic, expected_address):
     address = get_address(
         client,
         address_parameters=create_address_parameters(
-            address_type=CardanoAddressType.BYRON, address_n=tools.parse_path(path),
+            address_type=CardanoAddressType.BYRON,
+            address_n=tools.parse_path(path),
         ),
         protocol_magic=protocol_magic,
         network_id=0,

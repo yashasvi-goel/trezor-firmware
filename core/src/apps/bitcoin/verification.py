@@ -24,7 +24,11 @@ if False:
 
 class SignatureVerifier:
     def __init__(
-        self, script_pubkey: bytes, script_sig: bytes, witness: bytes, coin: CoinInfo,
+        self,
+        script_pubkey: bytes,
+        script_sig: bytes,
+        witness: bytes,
+        coin: CoinInfo,
     ):
         self.threshold = 1
         self.public_keys = []  # type: List[bytes]

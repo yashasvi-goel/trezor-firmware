@@ -71,7 +71,8 @@ def test_cardano_get_address(client, path, protocol_magic, expected_address):
     address = get_address(
         client,
         address_parameters=create_address_parameters(
-            address_type=CardanoAddressType.BYRON, address_n=tools.parse_path(path),
+            address_type=CardanoAddressType.BYRON,
+            address_n=tools.parse_path(path),
         ),
         protocol_magic=protocol_magic,
         network_id=NETWORK_IDS["mainnet"],
@@ -277,7 +278,8 @@ def test_cardano_get_reward_address(client, path, network_id, expected_address):
     address = get_address(
         client,
         address_parameters=create_address_parameters(
-            address_type=CardanoAddressType.REWARD, address_n=tools.parse_path(path),
+            address_type=CardanoAddressType.REWARD,
+            address_n=tools.parse_path(path),
         ),
         protocol_magic=PROTOCOL_MAGICS["mainnet"],
         network_id=network_id,

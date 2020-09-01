@@ -195,7 +195,9 @@ def test_non_segwit_segwit_non_segwit_inputs(client):
         script_type=messages.InputScriptType.SPENDWITNESS,
     )
     inp3 = messages.TxInputType(
-        address_n=parse_path("44'/1'/1'/0/0"), prev_hash=TXHASH_2bac7a, prev_index=0,
+        address_n=parse_path("44'/1'/1'/0/0"),
+        prev_hash=TXHASH_2bac7a,
+        prev_index=0,
     )
     out1 = messages.TxOutputType(
         address="tb1q54un3q39sf7e7tlfq99d6ezys7qgc62a6rxllc",

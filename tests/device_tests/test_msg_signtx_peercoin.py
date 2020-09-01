@@ -47,7 +47,12 @@ def test_timestamp_included(client):
 
     details = messages.SignTx(version=1, timestamp=0x5DC5448A)
     _, timestamp_tx = btc.sign_tx(
-        client, "Peercoin", [inp1], [out1], details=details, prev_txes=TX_CACHE,
+        client,
+        "Peercoin",
+        [inp1],
+        [out1],
+        details=details,
+        prev_txes=TX_CACHE,
     )
 
     # Accepted by network https://explorer.peercoin.net/api/getrawtransaction?txid=f7e3624c143b6a170cc44f9337d0fa8ea8564a211de9c077c6889d8c78f80909&decrypt=1
@@ -71,13 +76,23 @@ def test_timestamp_missing(client):
     details = messages.SignTx(version=1, timestamp=None)
     with pytest.raises(TrezorFailure, match="Timestamp must be set."):
         btc.sign_tx(
-            client, "Peercoin", [inp1], [out1], details=details, prev_txes=TX_CACHE,
+            client,
+            "Peercoin",
+            [inp1],
+            [out1],
+            details=details,
+            prev_txes=TX_CACHE,
         )
 
     details = messages.SignTx(version=1, timestamp=0)
     with pytest.raises(TrezorFailure, match="Timestamp must be set."):
         btc.sign_tx(
-            client, "Peercoin", [inp1], [out1], details=details, prev_txes=TX_CACHE,
+            client,
+            "Peercoin",
+            [inp1],
+            [out1],
+            details=details,
+            prev_txes=TX_CACHE,
         )
 
 
