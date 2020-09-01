@@ -1,6 +1,7 @@
 from trezor import wire
 from trezor.messages import ButtonRequestType
 from trezor.ui.confirm import CONFIRMED, INFO, Confirm, HoldToConfirm, InfoConfirm
+from trezor.ui.model import lookup_layout
 
 from . import button_request
 
@@ -112,5 +113,25 @@ async def require_confirm(*args: Any, **kwargs: Any) -> None:
 
 async def require_hold_to_confirm(*args: Any, **kwargs: Any) -> None:
     confirmed = await hold_to_confirm(*args, **kwargs)
+    if not confirmed:
+        raise wire.ActionCancelled
+
+
+async def confirm2(
+    ctx: wire.GenericContext,
+    code: EnumTypeButtonRequestType,
+    brtype: str,
+    **content: str,
+) -> bool:
+    # FIXME code based on brtype?
+    await button_request(ctx, code=code)
+
+    dialog = lookup_layout(brtype, content)
+
+    return await ctx.wait(dialog) is CONFIRMED
+
+
+async def require_confirm2(*args: Any, **kwargs: Any) -> None:
+    confirmed = await confirm2(*args, **kwargs)
     if not confirmed:
         raise wire.ActionCancelled
