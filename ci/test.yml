@@ -302,6 +302,8 @@ hardware core btconly device test:
   script:
     - cd ci/hardware_tests
     - nix-shell --run "cd ../.. && pipenv sync"
+    - sudo modprobe -r usbcore
+    - sudo modprobe usbcore
     - nix-shell --run "pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list"
     - sleep 10
     - nix-shell --run "pipenv run trezorctl usb-reset"
@@ -332,6 +334,8 @@ hardware legacy regular device test:
   script:
     - cd ci/hardware_tests
     - nix-shell --run "./record_video.sh ${CI_COMMIT_SHORT_SHA} start"
+    - sudo modprobe -r usbcore
+    - sudo modprobe usbcore
     - nix-shell --run "cd ../.. && pipenv sync"
     - nix-shell --run "pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list"
     - sleep 10
