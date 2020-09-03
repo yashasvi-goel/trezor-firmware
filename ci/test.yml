@@ -304,7 +304,7 @@ hardware core btconly device test:
     - nix-shell --run "cd ../.. && pipenv sync"
     - nix-shell --run "pipenv run trezorctl usb-reset"
     - sleep 10
-    - nix-shell --run "pipenv run trezorctl list"
+    - nix-shell --run "pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list"
     - sleep 10
     - export TREZOR_PATH=$(./get_trezor_path.sh 'Trezor T')
     - nix-shell --run "echo $TREZOR_PATH"
@@ -335,7 +335,7 @@ hardware legacy regular device test:
     - nix-shell --run "cd ../.. && pipenv sync"
     - nix-shell --run "pipenv run trezorctl usb-reset"
     - sleep 10
-    - nix-shell --run "pipenv run trezorctl list"
+    - nix-shell --run "pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list || pipenv run trezorctl list"
     - export TREZOR_PATH=$(./get_trezor_path.sh 'Trezor 1')
     - nix-shell --run "echo $TREZOR_PATH"
     - sleep 10
