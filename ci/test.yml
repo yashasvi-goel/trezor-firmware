@@ -320,11 +320,15 @@ hardware core btconly device test:
     - nix-shell --run "uhubctl -l 3-3 -p 3 -r 100 -a on"
     - nix-shell --run "uhubctl -l 3-3 -p 4 -r 100 -a on"
     - nix-shell --run "uhubctl"
+    - sleep 10
     - nix-shell --run "pipenv run trezorctl usb-reset"
     - nix-shell --run "pipenv run trezorctl list"
+    - sleep 10
     - export TREZOR_PATH=$(./get_trezor_path.sh 'Trezor T')
     - nix-shell --run "echo $TREZOR_PATH"
+    - sleep 10
     - nix-shell --run "pipenv run python bootstrap.py tt ../../trezor-*.bin"
+    - sleep 10
     - nix-shell --run "pipenv run pytest ../../tests/device_tests"
   timeout: 4h
   artifacts:
@@ -369,8 +373,11 @@ hardware legacy regular device test:
     - nix-shell --run "pipenv run trezorctl list"
     - export TREZOR_PATH=$(./get_trezor_path.sh 'Trezor 1')
     - nix-shell --run "echo $TREZOR_PATH"
+    - sleep 10
     - nix-shell --run "pipenv run python bootstrap.py t1"
+    - sleep 10
     - nix-shell --run "pipenv run python bootstrap.py t1 ../../trezor-*.bin"
+    - sleep 10
     - nix-shell --run "pipenv run pytest ../../tests/device_tests"
     - nix-shell --run "./record_video.sh ${CI_COMMIT_SHORT_SHA} stop"
   artifacts:
