@@ -288,6 +288,32 @@ storage test:
     when: always
 
 # Hardware
+hardware core regular device test:
+  stage: test
+  only:
+    - schedules  # nightly build
+    - /^legacy\//
+    - /^release\//
+    - /^secfix\//
+    - /^hw\//
+  tags:
+    - tpmb
+  needs: ["core fw regular debug build"]
+  script:
+    - cd ci/hardware_tests
+    - nix-shell --run "cd ../.. && pipenv sync"
+    - nix-shell --run "pipenv run trezorctl usb-reset"
+    - nix-shell --run "pipenv run trezorctl list"
+    - export TREZOR_PATH=$(./get_trezor_path.sh 'Trezor T')
+    - nix-shell --run "echo $TREZOR_PATH"
+    - nix-shell --run "pipenv run python bootstrap.py tt ../../trezor-*.bin"
+    - nix-shell --run "pipenv run pytest ../../tests/device_tests"
+  timeout: 4h
+  artifacts:
+    name: "$CI_JOB_NAME-$CI_COMMIT_SHORT_SHA"
+    expire_in: 2 days
+    when: always
+
 hardware legacy regular device test:
   stage: test
   only:
@@ -295,6 +321,7 @@ hardware legacy regular device test:
     - /^legacy\//
     - /^release\//
     - /^secfix\//
+    - /^hw\//
   tags:
     - tpmb
   needs: ["legacy fw regular debug build"]
@@ -302,8 +329,12 @@ hardware legacy regular device test:
     - cd ci/hardware_tests
     - nix-shell --run "./record_video.sh ${CI_COMMIT_SHORT_SHA} start"
     - nix-shell --run "cd ../.. && pipenv sync"
-    - nix-shell --run "pipenv run python bootstrap.py"
-    - nix-shell --run "pipenv run python bootstrap.py ../../trezor-*.bin"
+    - nix-shell --run "pipenv run trezorctl usb-reset"
+    - nix-shell --run "pipenv run trezorctl list"
+    - export TREZOR_PATH=$(./get_trezor_path.sh 'Trezor 1')
+    - nix-shell --run "echo $TREZOR_PATH"
+    - nix-shell --run "pipenv run python bootstrap.py t1"
+    - nix-shell --run "pipenv run python bootstrap.py t1 ../../trezor-*.bin"
     - nix-shell --run "pipenv run pytest ../../tests/device_tests"
     - nix-shell --run "./record_video.sh ${CI_COMMIT_SHORT_SHA} stop"
   artifacts:
@@ -322,6 +353,7 @@ hardware legacy btconly device test:
     - /^legacy\//
     - /^release\//
     - /^secfix\//
+    - /^hw\//
   tags:
     - tpmb
   needs: ["legacy fw btconly debug build"]
@@ -329,8 +361,12 @@ hardware legacy btconly device test:
     - cd ci/hardware_tests
     - nix-shell --run "./record_video.sh ${CI_COMMIT_SHORT_SHA} start"
     - nix-shell --run "cd ../.. && pipenv sync"
-    - nix-shell --run "pipenv run python bootstrap.py"
-    - nix-shell --run "pipenv run python bootstrap.py ../../trezor-*.bin"
+    - nix-shell --run "pipenv run trezorctl usb-reset"
+    - nix-shell --run "pipenv run trezorctl list"
+    - export TREZOR_PATH=$(./get_trezor_path.sh 'Trezor 1')
+    - nix-shell --run "echo $TREZOR_PATH"
+    - nix-shell --run "pipenv run python bootstrap.py t1"
+    - nix-shell --run "pipenv run python bootstrap.py t1 ../../trezor-*.bin"
     - nix-shell --run "pipenv run pytest ../../tests/device_tests"
     - nix-shell --run "./record_video.sh ${CI_COMMIT_SHORT_SHA} stop"
   artifacts:
