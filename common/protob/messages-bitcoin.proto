@@ -241,7 +241,8 @@ message TxAck {
             optional bytes witness = 13;                                        // witness data, only set for EXTERNAL inputs
             optional bytes ownership_proof = 14;                                // SLIP-0019 proof of ownership, only set for EXTERNAL inputs
             optional bytes commitment_data = 15;                                // optional commitment data for the SLIP-0019 proof of ownership
-
+            optional bytes orig_hash = 16;                                      // tx_hash of the original transaction where this input was spent (used when creating a replacement transaction)
+            optional uint32 orig_index = 17;                                    // index of the input in the original transaction (used when creating a replacement transaction)
         }
         /**
         * Structure representing compiled transaction output
@@ -264,6 +265,8 @@ message TxAck {
             // optional uint32 decred_script_version = 7;      // only for Decred  // deprecated -> only 0 is supported
             // optional bytes block_hash_bip115 = 8;        // BIP-115 support dropped
             // optional uint32 block_height_bip115 = 9;     // BIP-115 support dropped
+            optional bytes orig_hash = 10;                  // tx_hash of the original transaction where this output was present (used when creating a replacement transaction)
+            optional uint32 orig_index = 11;                // index of the output in the original transaction (used when creating a replacement transaction)
             enum OutputScriptType {
                 PAYTOADDRESS = 0;       // used for all addresses (bitcoin, p2sh, witness)
                 PAYTOSCRIPTHASH = 1;    // p2sh address (deprecated; use PAYTOADDRESS)
