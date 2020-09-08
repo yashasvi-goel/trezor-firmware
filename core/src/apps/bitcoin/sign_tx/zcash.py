@@ -25,13 +25,76 @@ from ..writers import (
     write_uint64,
 )
 from . import approvers, helpers
+from .bitcoin import Hash143
 from .bitcoinlike import Bitcoinlike
 
 if False:
+    from apps.common import coininfo
     from typing import List, Union
     from ..writers import Writer
 
 OVERWINTERED = const(0x80000000)
+
+
+class Zip243Hash(Hash143):
+    def __init__(self) -> None:
+        self.h_prevouts = HashWriter(blake2b(outlen=32, personal=b"ZcashPrevoutHash"))
+        self.h_sequence = HashWriter(blake2b(outlen=32, personal=b"ZcashSequencHash"))
+        self.h_outputs = HashWriter(blake2b(outlen=32, personal=b"ZcashOutputsHash"))
+
+    def preimage_hash(
+        self,
+        txi: TxInputType,
+        public_keys: List[bytes],
+        threshold: int,
+        tx: SignTx,
+        coin: coininfo.CoinInfo,
+        sighash_type: int,
+    ) -> bytes:
+        h_preimage = HashWriter(
+            blake2b(
+                outlen=32, personal=b"ZcashSigHash" + struct.pack("<I", tx.branch_id),
+            )
+        )
+
+        zero_hash = b"\x00" * TX_HASH_SIZE
+
+        # 1. nVersion | fOverwintered
+        write_uint32(h_preimage, tx.version | OVERWINTERED)
+        # 2. nVersionGroupId
+        write_uint32(h_preimage, tx.version_group_id)
+        # 3. hashPrevouts
+        write_bytes_fixed(h_preimage, get_tx_hash(self.h_prevouts), TX_HASH_SIZE)
+        # 4. hashSequence
+        write_bytes_fixed(h_preimage, get_tx_hash(self.h_sequence), TX_HASH_SIZE)
+        # 5. hashOutputs
+        write_bytes_fixed(h_preimage, get_tx_hash(self.h_outputs), TX_HASH_SIZE)
+        # 6. hashJoinSplits
+        write_bytes_fixed(h_preimage, zero_hash, TX_HASH_SIZE)
+        # 7. hashShieldedSpends
+        write_bytes_fixed(h_preimage, zero_hash, TX_HASH_SIZE)
+        # 8. hashShieldedOutputs
+        write_bytes_fixed(h_preimage, zero_hash, TX_HASH_SIZE)
+        # 9. nLockTime
+        write_uint32(h_preimage, tx.lock_time)
+        # 10. expiryHeight
+        write_uint32(h_preimage, tx.expiry)
+        # 11. valueBalance
+        write_uint64(h_preimage, 0)
+        # 12. nHashType
+        write_uint32(h_preimage, sighash_type)
+        # 13a. outpoint
+        write_bytes_reversed(h_preimage, txi.prev_hash, TX_HASH_SIZE)
+        write_uint32(h_preimage, txi.prev_index)
+        # 13b. scriptCode
+        script_code = derive_script_code(txi, public_keys, threshold, coin)
+        write_bytes_prefixed(h_preimage, script_code)
+        # 13c. value
+        write_uint64(h_preimage, txi.amount)
+        # 13d. nSequence
+        write_uint32(h_preimage, txi.sequence)
+
+        return get_tx_hash(h_preimage)
 
 
 class Zcashlike(Bitcoinlike):
@@ -47,6 +110,9 @@ class Zcashlike(Bitcoinlike):
 
         if self.tx.version != 4:
             raise wire.DataError("Unsupported transaction version.")
+
+    def create_hash143(self) -> Hash143:
+        return Zip243Hash()
 
     async def step7_finish(self) -> None:
         self.write_tx_footer(self.serialized_tx, self.tx)
@@ -69,7 +135,9 @@ class Zcashlike(Bitcoinlike):
         threshold: int,
         script_pubkey: bytes,
     ) -> bytes:
-        return self.hash143_preimage_hash(txi, public_keys, threshold)
+        return self.hash143.preimage_hash(
+            txi, public_keys, threshold, self.tx, self.coin, self.get_sighash_type(txi)
+        )
 
     def write_tx_header(
         self, w: Writer, tx: Union[SignTx, TransactionType], witness_marker: bool
@@ -86,67 +154,6 @@ class Zcashlike(Bitcoinlike):
         write_uint32(w, tx.lock_time)
         if tx.version >= 3:
             write_uint32(w, tx.expiry)  # expiryHeight
-
-    # ZIP-0143 / ZIP-0243
-    # ===
-
-    def init_hash143(self) -> None:
-        self.h_prevouts = HashWriter(blake2b(outlen=32, personal=b"ZcashPrevoutHash"))
-        self.h_sequence = HashWriter(blake2b(outlen=32, personal=b"ZcashSequencHash"))
-        self.h_outputs = HashWriter(blake2b(outlen=32, personal=b"ZcashOutputsHash"))
-
-    def hash143_preimage_hash(
-        self, txi: TxInputType, public_keys: List[bytes], threshold: int
-    ) -> bytes:
-        h_preimage = HashWriter(
-            blake2b(
-                outlen=32,
-                personal=b"ZcashSigHash" + struct.pack("<I", self.tx.branch_id),
-            )
-        )
-
-        # 1. nVersion | fOverwintered
-        write_uint32(h_preimage, self.tx.version | OVERWINTERED)
-        # 2. nVersionGroupId
-        write_uint32(h_preimage, self.tx.version_group_id)
-        # 3. hashPrevouts
-        write_bytes_fixed(h_preimage, get_tx_hash(self.h_prevouts), TX_HASH_SIZE)
-        # 4. hashSequence
-        write_bytes_fixed(h_preimage, get_tx_hash(self.h_sequence), TX_HASH_SIZE)
-        # 5. hashOutputs
-        write_bytes_fixed(h_preimage, get_tx_hash(self.h_outputs), TX_HASH_SIZE)
-
-        zero_hash = b"\x00" * TX_HASH_SIZE
-        # 6. hashJoinSplits
-        write_bytes_fixed(h_preimage, zero_hash, TX_HASH_SIZE)
-        # 7. hashShieldedSpends
-        write_bytes_fixed(h_preimage, zero_hash, TX_HASH_SIZE)
-        # 8. hashShieldedOutputs
-        write_bytes_fixed(h_preimage, zero_hash, TX_HASH_SIZE)
-        # 9. nLockTime
-        write_uint32(h_preimage, self.tx.lock_time)
-        # 10. expiryHeight
-        write_uint32(h_preimage, self.tx.expiry)
-        # 11. valueBalance
-        write_uint64(h_preimage, 0)
-        # 12. nHashType
-        write_uint32(h_preimage, self.get_sighash_type(txi))
-
-        # 10a /13a. outpoint
-        write_bytes_reversed(h_preimage, txi.prev_hash, TX_HASH_SIZE)
-        write_uint32(h_preimage, txi.prev_index)
-
-        # 10b / 13b. scriptCode
-        script_code = derive_script_code(txi, public_keys, threshold, self.coin)
-        write_bytes_prefixed(h_preimage, script_code)
-
-        # 10c / 13c. value
-        write_uint64(h_preimage, txi.amount)
-
-        # 10d / 13d. nSequence
-        write_uint32(h_preimage, txi.sequence)
-
-        return get_tx_hash(h_preimage)
 
 
 def derive_script_code(
