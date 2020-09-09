@@ -47,7 +47,7 @@ class Zip243Hash(Hash143):
         txi: TxInputType,
         public_keys: List[bytes],
         threshold: int,
-        tx: SignTx,
+        tx: Union[SignTx, TransactionType],
         coin: coininfo.CoinInfo,
         sighash_type: int,
     ) -> bytes:
@@ -131,12 +131,15 @@ class Zcashlike(Bitcoinlike):
         self,
         i: int,
         txi: TxInputType,
+        tx: Union[SignTx, TransactionType],
+        hash143: Hash143,
+        h_approved: HashWriter,
         public_keys: List[bytes],
         threshold: int,
         script_pubkey: bytes,
     ) -> bytes:
-        return self.hash143.preimage_hash(
-            txi, public_keys, threshold, self.tx, self.coin, self.get_sighash_type(txi)
+        return hash143.preimage_hash(
+            txi, public_keys, threshold, tx, self.coin, self.get_sighash_type(txi)
         )
 
     def write_tx_header(
