@@ -251,10 +251,13 @@ class Bitcoin:
             # STAGE_REQUEST_2_OUTPUT in legacy
             txo = await helpers.request_tx_output(self.tx_req, i, self.coin)
             script_pubkey = self.output_derive_script(txo)
-            await self.approve_output(txo, script_pubkey)
-
             if txo.orig_hash:
-                await self.process_original_tx_output(txo, script_pubkey)
+                orig_txo = await self.fetch_original_tx_output(txo.orig_hash, txo.orig_index)
+                if script_pubkey != orig_txo.script_pubkey:
+                    raise wire.ProcessError("Not an original output.")
+            else:
+                orig_txo = None
+            await self.approve_output(txo, script_pubkey, orig_txo)
 
         await self.finalize_original_tx_outputs()
 
@@ -384,6 +387,7 @@ class Bitcoin:
             txi_removed = await helpers.request_tx_input(
                 self.tx_req, orig.index, self.coin, txi.orig_hash
             )
+            self.approvers.add_removed_orig_external_input(txi_removed)
             orig.add_input(txi_removed, removed=True)
             orig.index += 1
 
@@ -400,38 +404,42 @@ class Bitcoin:
                 orig.index += 1
             orig.index = 0  # Reset counter for outputs.
 
-    async def process_original_tx_output(
-        self, txo: TxOutputType, script_pubkey: bytes
-    ) -> None:
+    async def fetch_original_tx_output(
+        self, orig_hash: bytes, orig_index: int
+    ) -> TxOutputBinType:
         try:
-            orig = self.orig_txs[bytes(txo.orig_hash)]
+            orig = self.orig_txs[bytes(orig_hash)]
         except KeyError:
             raise wire.ProcessError("Unknown original transaction.")
 
-        if orig.index > txo.orig_index:
+        if orig.index > orig_index:
             raise wire.ProcessError("Rearranging of original outputs is not supported.")
 
-        if txo.orig_index >= orig.tx.outputs_cnt:
+        if orig_index >= orig.tx.outputs_cnt:
             raise wire.ProcessError("Not enough outputs in original transaction.")
 
-        while orig.index < txo.orig_index:
-            txo_removed = await helpers.request_tx_output(
-                self.tx_req, orig.index, self.coin, txo.orig_hash
+        while orig.index <= orig_index:
+            txo = await helpers.request_tx_output(
+                self.tx_req, orig.index, self.coin, orig_hash
             )
-            orig.add_output(txo_removed, txo_removed.script_pubkey)
+            orig.add_output(txo, txo.script_pubkey)
             orig.index += 1
+            if orig.index < orig_index:
+                self.approver.add_removed_orig_external_output(txo)
+                # TODO figure out how to detect change outputs and add them
 
-        orig.add_output(txo, script_pubkey)
-        orig.index += 1
+        return txo
 
     async def finalize_original_tx_outputs(self) -> None:
         for orig_hash, orig in self.orig_txs.items():
             while orig.index < orig.tx.outputs_cnt:
-                txo_removed = await helpers.request_tx_output(
+                txo = await helpers.request_tx_output(
                     self.tx_req, orig.index, self.coin, orig_hash
                 )
-                orig.add_output(txo_removed, txo_removed.script_pubkey)
+                orig.add_output(txo, txo.script_pubkey)
                 orig.index += 1
+                self.approver.add_removed_orig_external_output(txo)
+                # TODO figure out how to detect change outputs and add them
 
     async def verify_original_tx(self, orig_hash: bytes, orig: OriginalTx) -> None:
         if orig.verification_index is None:
@@ -464,12 +472,14 @@ class Bitcoin:
         )
         verifier.verify(tx_digest)
 
-    async def approve_output(self, txo: TxOutputType, script_pubkey: bytes) -> None:
+    async def approve_output(self, txo: TxOutputType, script_pubkey: bytes, orig_txo: Optional[TxOutputBinType]) -> None:
+        # TODO figure out how to detect original change outputs and add them
+
         if self.output_is_change(txo):
             # output is change and does not need approval
             self.approver.add_change_output(txo, script_pubkey)
         else:
-            await self.approver.add_external_output(txo, script_pubkey)
+            await self.approver.add_external_output(txo, script_pubkey, orig_txo)
 
         self.write_tx_output(self.h_approved, txo, script_pubkey)
         self.hash143.add_output(txo, script_pubkey)
