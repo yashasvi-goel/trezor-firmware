@@ -4,6 +4,7 @@ from storage import device
 from trezor import wire
 from trezor.messages.SignTx import SignTx
 from trezor.messages.TxInputType import TxInputType
+from trezor.messages.TxOutputBinType import TxOutputBinType
 from trezor.messages.TxOutputType import TxOutputType
 
 from apps.common import coininfo
@@ -13,6 +14,7 @@ from ..authorization import FEE_PER_ANONYMITY_DECIMALS
 from . import helpers, tx_weight
 
 if False:
+    from typing import Optional
     from ..authorization import CoinJoinAuthorization
 
 # Setting nSequence to this value for every input in a transaction disables nLockTime.
@@ -30,33 +32,60 @@ class Approver:
         self.weight = tx_weight.TxWeightCalculator(tx.inputs_count, tx.outputs_count)
         self.min_sequence = _SEQUENCE_FINAL  # the minimum nSequence of all inputs
 
-        # amounts
+        # amounts in the current transaction
         self.total_in = 0  # sum of input amounts
         self.external_in = 0  # sum of external input amounts
         self.total_out = 0  # sum of output amounts
-        self.change_out = 0  # change output amount
+        self.change_out = 0  # sum of change output amounts
+
+        # amounts in original transactions when this is a replacement transaction
+        self.orig_total_in = 0  # sum of original input amounts
+        self.orig_external_in = 0  # sum of original external input amounts
+        self.orig_total_out = 0  # sum of original output amounts
+        self.orig_change_out = 0  # sum of original change output amounts
 
     async def add_internal_input(self, txi: TxInputType) -> None:
         self.weight.add_input(txi)
         self.total_in += txi.amount
         self.min_sequence = min(self.min_sequence, txi.sequence)
+        if txi.orig_hash:
+            self.orig_total_in += txi.amount
 
     def add_external_input(self, txi: TxInputType) -> None:
         self.weight.add_input(txi)
         self.total_in += txi.amount
         self.external_in += txi.amount
         self.min_sequence = min(self.min_sequence, txi.sequence)
+        if txi.orig_hash:
+            self.orig_total_in += txi.amount
+            self.orig_external_in += txi.amount
+
+    def add_removed_orig_external_input(self, txi: TxInputType) -> None:
+        self.orig_total_in += txi.amount
+        self.orig_external_in += txi.amount
 
     def add_change_output(self, txo: TxOutputType, script_pubkey: bytes) -> None:
         self.weight.add_output(script_pubkey)
         self.total_out += txo.amount
         self.change_out += txo.amount
 
+    def add_orig_change_output(self, txo: TxOutputBinType) -> None:
+        self.orig_total_out += txo.amount
+        self.orig_change_out += txo.amount
+
     async def add_external_output(
-        self, txo: TxOutputType, script_pubkey: bytes
+        self,
+        txo: TxOutputType,
+        script_pubkey: bytes,
+        orig_txo: Optional[TxOutputBinType],
     ) -> None:
         self.weight.add_output(script_pubkey)
         self.total_out += txo.amount
+        if orig_txo:
+            self.orig_total_out += orig_txo.amount
+
+    async def add_removed_orig_external_output(self, txo: TxOutputBinType) -> None:
+        self.orig_total_out += txo.amount
 
     async def approve_tx(self) -> None:
         raise NotImplementedError
@@ -81,12 +110,21 @@ class BasicApprover(Approver):
         self.change_count += 1
 
     async def add_external_output(
-        self, txo: TxOutputType, script_pubkey: bytes
+        self,
+        txo: TxOutputType,
+        script_pubkey: bytes,
+        orig_txo: Optional[TxOutputBinType],
     ) -> None:
-        await super().add_external_output(txo, script_pubkey)
+        await super().add_external_output(txo, script_pubkey, orig_txo)
         await helpers.confirm_output(txo, self.coin)
 
+    async def add_removed_orig_external_output(self, txo: TxOutputBinType) -> None:
+        # TODO confirm removal of output
+        pass
+
     async def approve_tx(self) -> None:
+        # TODO if this is a replacement tx, then confirm changes in fee and/or total
+
         fee = self.total_in - self.total_out
 
         # some coins require negative fees for reward TX
@@ -157,9 +195,12 @@ class CoinJoinApprover(Approver):
         self.group_our_count += 1
 
     async def add_external_output(
-        self, txo: TxOutputType, script_pubkey: bytes
+        self,
+        txo: TxOutputType,
+        script_pubkey: bytes,
+        orig_txo: Optional[TxOutputBinType],
     ) -> None:
-        await super().add_external_output(txo, script_pubkey)
+        await super().add_external_output(txo, script_pubkey, orig_txo)
         self._add_output(txo, script_pubkey)
 
     async def approve_tx(self) -> None:
