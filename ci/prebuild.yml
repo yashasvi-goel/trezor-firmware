@@ -41,6 +41,9 @@ xxx:
     DEPLOY_PATH: "${DEPLOY_BASE_DIR}/releases/emulators"
   before_script: []  # no pipenv
   script:
-    - mkdir ${DEPLOY_BASE_DIR}/releases/emulators/macos/
+    - cp ${DEPLOY_BASE_DIR}/upgrade_tests/trezor-emu-core-v2.3.3 ${DEPLOY_BASE_DIR}/releases/emulators/
+    - cp ${DEPLOY_BASE_DIR}/upgrade_tests/trezor-emu-legacy-v1.9.3 ${DEPLOY_BASE_DIR}/releases/emulators/
+    - mv ${DEPLOY_BASE_DIR}/releases/emulators/trezor-emu-core-v2.3.2-63ebb8cc ${DEPLOY_BASE_DIR}/releases/emulators/trezor-emu-core-v2.3.2
+    - mv ${DEPLOY_BASE_DIR}/releases/emulators/trezor-emu-legacy-v1.9.2-63ebb8cc ${DEPLOY_BASE_DIR}/releases/emulators/trezor-emu-legacy-v1.9.2
   tags:
     - deploy
