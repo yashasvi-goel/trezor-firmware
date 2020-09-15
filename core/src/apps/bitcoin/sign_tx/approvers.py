@@ -60,10 +60,6 @@ class Approver:
             self.orig_total_in += txi.amount
             self.orig_external_in += txi.amount
 
-    def add_removed_orig_external_input(self, txi: TxInputType) -> None:
-        self.orig_total_in += txi.amount
-        self.orig_external_in += txi.amount
-
     def add_change_output(self, txo: TxOutputType, script_pubkey: bytes) -> None:
         self.weight.add_output(script_pubkey)
         self.total_out += txo.amount
@@ -74,17 +70,12 @@ class Approver:
         self.orig_change_out += txo.amount
 
     async def add_external_output(
-        self,
-        txo: TxOutputType,
-        script_pubkey: bytes,
-        orig_txo: Optional[TxOutputBinType],
+        self, txo: TxOutputType, script_pubkey: bytes,
     ) -> None:
         self.weight.add_output(script_pubkey)
         self.total_out += txo.amount
-        if orig_txo:
-            self.orig_total_out += orig_txo.amount
 
-    async def add_removed_orig_external_output(self, txo: TxOutputBinType) -> None:
+    async def add_orig_external_output(self, txo: TxOutputBinType):
         self.orig_total_out += txo.amount
 
     async def approve_tx(self) -> None:
@@ -113,18 +104,11 @@ class BasicApprover(Approver):
         self,
         txo: TxOutputType,
         script_pubkey: bytes,
-        orig_txo: Optional[TxOutputBinType],
     ) -> None:
-        await super().add_external_output(txo, script_pubkey, orig_txo)
+        await super().add_external_output(txo, script_pubkey)
         await helpers.confirm_output(txo, self.coin)
 
-    async def add_removed_orig_external_output(self, txo: TxOutputBinType) -> None:
-        # TODO confirm removal of output
-        pass
-
     async def approve_tx(self) -> None:
-        # TODO if this is a replacement tx, then confirm changes in fee and/or total
-
         fee = self.total_in - self.total_out
 
         # some coins require negative fees for reward TX
@@ -148,10 +132,21 @@ class BasicApprover(Approver):
             await helpers.confirm_nondefault_locktime(
                 self.tx.lock_time, lock_time_disabled
             )
-        if not self.external_in:
+
+        orig_spending = (
+            self.orig_total_in - self.orig_change_out - self.orig_external_in
+        )
+        orig_fee = self.orig_total_in - self.orig_total_out
+        if spending - orig_spending <= fee - orig_fee:
+            await helpers.confirm_modify_fee(total, fee, self.coin)
+        elif not self.external_in:
             await helpers.confirm_total(total, fee, self.coin)
         else:
             await helpers.confirm_joint_total(spending, total, self.coin)
+
+
+class AmendmentApprover(Approver):
+    pass
 
 
 class CoinJoinApprover(Approver):
@@ -198,9 +193,8 @@ class CoinJoinApprover(Approver):
         self,
         txo: TxOutputType,
         script_pubkey: bytes,
-        orig_txo: Optional[TxOutputBinType],
     ) -> None:
-        await super().add_external_output(txo, script_pubkey, orig_txo)
+        await super().add_external_output(txo, script_pubkey)
         self._add_output(txo, script_pubkey)
 
     async def approve_tx(self) -> None:
