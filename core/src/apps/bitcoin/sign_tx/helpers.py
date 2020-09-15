@@ -45,6 +45,18 @@ class UiConfirmOutput(UiConfirm):
     __eq__ = utils.obj_eq
 
 
+class UiConfirmModifyFee(UiConfirm):
+    def __init__(self, old_fee: int, new_fee: int, coin: CoinInfo):
+        self.old_fee = old_fee
+        self.new_fee = new_fee
+        self.coin = coin
+
+    def confirm_dialog(self, ctx: wire.Context) -> Awaitable[Any]:
+        return layout.confirm_modify_fee(ctx, self.old_fee, self.new_fee, self.coin)
+
+    __eq__ = utils.obj_eq
+
+
 class UiConfirmTotal(UiConfirm):
     def __init__(self, spending: int, fee: int, coin: CoinInfo):
         self.spending = spending
@@ -115,6 +127,10 @@ class UiConfirmNonDefaultLocktime(UiConfirm):
 
 def confirm_output(output: TxOutputType, coin: CoinInfo) -> Awaitable[Any]:  # type: ignore
     return (yield UiConfirmOutput(output, coin))
+
+
+def confirm_modify_fee(old_fee: int, new_fee: int, coin: CoinInfo) -> Awaitable[Any]:  # type: ignore
+    return (yield UiConfirmModifyFee(old_fee, new_fee, coin))
 
 
 def confirm_total(spending: int, fee: int, coin: CoinInfo) -> Awaitable[Any]:  # type: ignore

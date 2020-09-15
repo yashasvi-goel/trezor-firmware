@@ -58,6 +58,17 @@ async def confirm_output(
     await require_confirm(ctx, text, ButtonRequestType.ConfirmOutput)
 
 
+async def confirm_modify_fee(
+    ctx: wire.Context, old_fee: int, new_fee: int, coin: coininfo.CoinInfo
+) -> None:
+    text = Text("Fee modification", ui.ICON_SEND, ui.GREEN)
+    text.normal("Old transaction fee:")
+    text.normal(format_coin_amount(old_fee, coin))
+    text.normal("New transaction fee:")
+    text.bold(format_coin_amount(new_fee, coin))
+    await require_hold_to_confirm(ctx, text, ButtonRequestType.SignTx)
+
+
 async def confirm_joint_total(
     ctx: wire.Context, spending: int, total: int, coin: coininfo.CoinInfo
 ) -> None:
