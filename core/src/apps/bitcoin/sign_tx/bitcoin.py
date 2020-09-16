@@ -26,6 +26,7 @@ from .matchcheck import MultisigFingerprintChecker, WalletPathChecker
 if False:
     from typing import Dict, List, Optional, Set, Tuple, Union
     from trezor.crypto.bip32 import HDNode
+    from apps.common.writers import Writer
 
 # the chain id used for change
 _BIP32_CHANGE_CHAIN = const(1)
@@ -128,7 +129,7 @@ class TxInfoBase:
 
     def add_input(self, txi: TxInputType) -> None:
         self.hash143.add_input(txi)  # all inputs are included (non-segwit as well)
-        writers.write_tx_input_check(self.h_tx_check, txi)
+        self.write_tx_input_check(self.h_tx_check, txi)
 
         if not input_is_external(txi):
             self.wallet_path.add_input(txi)
@@ -155,7 +156,12 @@ class TxInfoBase:
             and txo.amount > 0
         )
 
+    @classmethod
+    def write_tx_input_check(cls, w: Writer, txi: TxInputType) -> None:
+        writers.write_tx_input_check(w, txi)
 
+
+# Used to keep track of the transaction currently being signed.
 class TxInfo(TxInfoBase):
     def __init__(self, tx: SignTx, hash143: Hash143,) -> None:
         super().__init__(hash143)
@@ -173,17 +179,30 @@ class OriginalTxInfo(TxInfoBase):
         super().__init__(hash143)
         self.tx = tx
 
+        if self.tx.lock_time:
+            # User confirmation required to decrease nLockTime.
+            raise wire.ProcessError(
+                "Original transactions with non-zero nLockTime are not supported."
+            )
+
         # The current index when iterating over inputs or outputs.
         self.index = 0
 
         # The index of the input which will be used for verification.
         self.verification_index = None  # type: Optional[int]
+        self.verification_address_n = []  # type: List[int]
 
     def add_input(self, txi: TxInputType) -> None:
         super().add_input(txi)
 
         if self.verification_index is None and not input_is_external(txi):
             self.verification_index = self.index
+            self.verification_address_n = txi.address_n
+
+    @classmethod
+    def write_tx_input_check(cls, w: Writer, txi: TxInputType) -> None:
+        # For original tx inputs we are not interested in amount and address_n.
+        writers.write_tx_input(w, txi, bytes())
 
 
 class Bitcoin:
@@ -279,9 +298,7 @@ class Bitcoin:
             txo = await helpers.request_tx_output(self.tx_req, i, self.coin)
             script_pubkey = self.output_derive_script(txo)
             if txo.orig_hash:
-                orig_txo = await self.fetch_original_tx_output(
-                    txo.orig_hash, txo.orig_index
-                )
+                orig_txo = await self.fetch_original_tx_output(txo)
                 if script_pubkey != orig_txo.script_pubkey:
                     raise wire.ProcessError("Not an original output.")
             else:
@@ -393,39 +410,40 @@ class Bitcoin:
 
             orig.index = 0  # Reset counter for outputs.
 
-    async def fetch_original_tx_output(
-        self, orig_hash: bytes, orig_index: int
-    ) -> TxOutputBinType:
+    async def fetch_original_tx_output(self, txo: TxOutputType) -> TxOutputBinType:
         try:
-            orig = self.orig_txs[bytes(orig_hash)]
+            orig = self.orig_txs[bytes(txo.orig_hash)]
         except KeyError:
             raise wire.ProcessError("Unknown original transaction.")
 
-        if orig_index >= orig.tx.outputs_cnt:
+        if txo.orig_index >= orig.tx.outputs_cnt:
             raise wire.ProcessError("Not enough outputs in original transaction.")
 
-        if orig.index > orig_index:
+        if orig.index > txo.orig_index:
             raise wire.ProcessError("Rearranging of original outputs is not supported.")
 
         # Fetch output, including any removed original outputs in between.
-        while orig.index <= orig_index:
-            txo = await helpers.request_tx_output(
-                self.tx_req, orig.index, self.coin, orig_hash
+        while orig.index <= txo.orig_index:
+            orig_txo = await helpers.request_tx_output(
+                self.tx_req, orig.index, self.coin, txo.orig_hash
             )
-            orig.add_output(txo, txo.script_pubkey)
-            orig.index += 1
+            orig.add_output(orig_txo, orig_txo.script_pubkey)
 
             # TODO figure out how to detect change outputs and add them. Basically we want to call
-            # orig.output_is_change(txo), but can't use TxOutputBinType, because it's missing the
-            # address_n, multisig and script_type fields. So:
-            # if orig.output_is_change(txo):
-            #     self.approver.add_orig_change_output(txo)
-            # elif orig.index != orig_index:
-            raise wire.ProcessError("Removing of original outputs is not supported.")
-            # else:
-            #     self.approver.add_orig_external_output(txo)
+            # orig.output_is_change(orig_txo), but can't use TxOutputBinType, because it's missing the
+            # address_n, multisig and script_type fields. This is needed to be able to remove change-outputs.
+            if orig.output_is_change(txo):
+                self.approver.add_orig_change_output(orig_txo)
+            else:
+                if orig.index != txo.orig_index:
+                    raise wire.ProcessError(
+                        "Removing of original outputs is not supported."
+                    )
+                self.approver.add_orig_external_output(orig_txo)
 
-        return txo
+            orig.index += 1
+
+        return orig_txo
 
     async def finalize_original_tx_outputs(self) -> None:
         for orig_hash, orig in self.orig_txs.items():
@@ -435,14 +453,16 @@ class Bitcoin:
                     self.tx_req, orig.index, self.coin, orig_hash
                 )
                 orig.add_output(txo, txo.script_pubkey)
-                orig.index += 1
-                # TODO figure out how to detect change outputs and add them.
+
+                # TODO figure out how to detect change outputs and add them. (Needed to be able to remove original change-outputs.)
                 # if orig.output_is_change(txo):
                 #     self.approver.add_orig_change_output(txo)
                 # else:
                 raise wire.ProcessError(
                     "Removing of original outputs is not supported."
                 )
+
+                orig.index += 1
 
     async def verify_original_tx(self, orig_hash: bytes, orig: OriginalTxInfo) -> None:
         if orig.verification_index is None:
@@ -454,7 +474,7 @@ class Bitcoin:
             self.tx_req, orig.verification_index, self.coin, orig_hash
         )
 
-        node = self.keychain.derive(txi.address_n)
+        node = self.keychain.derive(orig.verification_address_n)
         address = addresses.get_address(txi.script_type, self.coin, node, txi.multisig)
         script_pubkey = scripts.output_derive_script(address, self.coin)
 
@@ -483,8 +503,8 @@ class Bitcoin:
             # output is change and does not need approval
             self.approver.add_change_output(txo, script_pubkey)
         else:
-            if orig_txo and txo.amount != orig_txo.amount:
-                raise wire.ProcessError("Changing output amounts is not supported.")
+            if orig_txo and txo.amount < orig_txo.amount:
+                raise wire.ProcessError("Reducing output amounts is not supported.")
 
             await self.approver.add_external_output(txo, script_pubkey)
 
@@ -637,7 +657,7 @@ class Bitcoin:
         for i in range(inputs_count):
             # STAGE_REQUEST_4_INPUT in legacy
             txi = await helpers.request_tx_input(self.tx_req, i, self.coin, tx_hash)
-            writers.write_tx_input_check(h_check, txi)
+            tx_info.write_tx_input_check(h_check, txi)
             # Only the previous UTXO's scriptPubKey is included in h_sign.
             if i == index:
                 txi_sign = txi

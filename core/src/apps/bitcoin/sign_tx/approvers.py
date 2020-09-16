@@ -14,7 +14,6 @@ from ..authorization import FEE_PER_ANONYMITY_DECIMALS
 from . import helpers, tx_weight
 
 if False:
-    from typing import Optional
     from ..authorization import CoinJoinAuthorization
 
 # Setting nSequence to this value for every input in a transaction disables nLockTime.
@@ -75,7 +74,7 @@ class Approver:
         self.weight.add_output(script_pubkey)
         self.total_out += txo.amount
 
-    async def add_orig_external_output(self, txo: TxOutputBinType):
+    def add_orig_external_output(self, txo: TxOutputBinType):
         self.orig_total_out += txo.amount
 
     async def approve_tx(self) -> None:
@@ -101,12 +100,13 @@ class BasicApprover(Approver):
         self.change_count += 1
 
     async def add_external_output(
-        self,
-        txo: TxOutputType,
-        script_pubkey: bytes,
+        self, txo: TxOutputType, script_pubkey: bytes,
     ) -> None:
         await super().add_external_output(txo, script_pubkey)
-        await helpers.confirm_output(txo, self.coin)
+
+        # Skip output confirmation for replacement transactions.
+        if not self.orig_total_in:
+            await helpers.confirm_output(txo, self.coin)
 
     async def approve_tx(self) -> None:
         fee = self.total_in - self.total_out
@@ -133,16 +133,26 @@ class BasicApprover(Approver):
                 self.tx.lock_time, lock_time_disabled
             )
 
-        orig_spending = (
-            self.orig_total_in - self.orig_change_out - self.orig_external_in
-        )
-        orig_fee = self.orig_total_in - self.orig_total_out
-        if spending - orig_spending <= fee - orig_fee:
-            await helpers.confirm_modify_fee(total, fee, self.coin)
-        elif not self.external_in:
-            await helpers.confirm_total(total, fee, self.coin)
+        if self.orig_total_in:
+            # Replacement transaction.
+            orig_spending = (
+                self.orig_total_in - self.orig_change_out - self.orig_external_in
+            )
+            orig_fee = self.orig_total_in - self.orig_total_out
+            if spending - orig_spending > fee - orig_fee:
+                # Replacement transactions are only allowed to make amendments
+                # which modify fees and do not decrease the value of any
+                # original external outputs.
+                raise wire.ProcessError("Invalid replacement transaction.")
+
+            # If we are not spending any more then we were, then autoconfirm.
+            if spending > orig_spending:
+                await helpers.confirm_modify_fee(total, fee, self.coin)
         else:
-            await helpers.confirm_joint_total(spending, total, self.coin)
+            if not self.external_in:
+                await helpers.confirm_total(total, fee, self.coin)
+            else:
+                await helpers.confirm_joint_total(spending, total, self.coin)
 
 
 class AmendmentApprover(Approver):
@@ -190,9 +200,7 @@ class CoinJoinApprover(Approver):
         self.group_our_count += 1
 
     async def add_external_output(
-        self,
-        txo: TxOutputType,
-        script_pubkey: bytes,
+        self, txo: TxOutputType, script_pubkey: bytes,
     ) -> None:
         await super().add_external_output(txo, script_pubkey)
         self._add_output(txo, script_pubkey)
