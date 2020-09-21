@@ -1,5 +1,8 @@
 ## help commands:
 
+yash: main.c  ## run Yashasvi's version
+	$(CC) main.c -Wall -Wall -Wextra -pedantic -ansi -std=c99
+
 help: ## show this help
 	@awk -f ./tools/help.awk $(MAKEFILE_LIST)
 
